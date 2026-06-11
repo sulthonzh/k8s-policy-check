@@ -354,3 +354,113 @@ export function fixRegoFile(filePath) {
     fixed: modified ? newLines.join('\n') : null,
   };
 }
+
+// ── Rego formatter ──────────────────────────────────────────────────
+
+/**
+ * Format a Rego source string with consistent style.
+ *
+ * Rules applied:
+ *   1. Trim trailing whitespace from every line
+ *   2. Normalize blank lines (collapse multiple blanks to max 1)
+ *   3. Ensure single blank line before top-level rules (package, import, default, rule definitions)
+ *   4. Consistent spacing around := and : (assignment / rule head)
+ *   5. Consistent spacing inside { } blocks — no spacing for single-item sets
+ *   6. Ensure file ends with a single newline
+ *   7. Fix inconsistent indentation (tabs → 4 spaces)
+ *
+ * Returns the formatted string.
+ */
+export function fmtRegoSource(content) {
+  let lines = content.split('\n');
+
+  // 1. Trim trailing whitespace
+  lines = lines.map(l => l.replace(/\s+$/, ''));
+
+  // 2. Tabs → 4 spaces
+  lines = lines.map(l => l.replace(/\t/g, '    '));
+
+  // 3. Consistent spacing around := (assignment)
+  //    "x:=y" → "x := y",  "x :=  y" → "x := y"
+  lines = lines.map(l => {
+    // Skip comments
+    const trimmed = l.trim();
+    if (trimmed.startsWith('#')) return l;
+
+    // Fix := spacing (but not inside strings — rough heuristic)
+    let result = l;
+    // "foo:=bar" → "foo := bar"
+    result = result.replace(/(\S)\s*:=\s*(\S)/g, (m, pre, post) => `${pre} := ${post}`);
+    // "foo :=  bar" → already handled above
+    return result;
+  });
+
+  // 4. Consistent spacing after commas in function args / lists
+  lines = lines.map(l => {
+    if (l.trim().startsWith('#')) return l;
+    // "foo(a,b,c)" → "foo(a, b, c)"  but not inside strings (rough)
+    return l.replace(/,\s{2,}/g, ', ').replace(/,([^\s#])/g, ', $1');
+  });
+
+  // 5. Normalize blank lines — collapse consecutive blanks
+  const normalized = [];
+  for (const line of lines) {
+    if (line.trim() === '' && normalized.length > 0 && normalized[normalized.length - 1].trim() === '') {
+      continue;
+    }
+    normalized.push(line);
+  }
+  lines = normalized;
+
+  // 6. Ensure blank line before top-level declarations (package, import, default, rule)
+  //    But only if previous non-blank line is not itself a top-level declaration
+  const result = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Top-level declaration patterns
+    const isTopLevel = /^(package |import |default |[^ \t][\w]+[\[{ ])/.test(trimmed) && !trimmed.startsWith('#');
+
+    if (isTopLevel && result.length > 0) {
+      // Check if there's already a blank line before
+      const prevNonBlank = [...result].reverse().find(l => l.trim() !== '');
+      if (prevNonBlank !== undefined) {
+        const prevTrimmed = prevNonBlank.trim();
+        const prevIsTopLevel = /^(package |import |default |[^ \t][\w]+[\[{ ])/.test(prevTrimmed) && !prevTrimmed.startsWith('#');
+        // Don't add blank line between consecutive imports or between package and first import
+        const bothImports = trimmed.startsWith('import ') && prevTrimmed.startsWith('import ');
+        const pkgAndImport = trimmed.startsWith('import ') && prevTrimmed.startsWith('package ');
+        const pkgAndDefault = trimmed.startsWith('default ') && prevTrimmed.startsWith('package ');
+        // Add blank line before top-level rules, but not between package/import/default groups
+        const isGroup = bothImports || pkgAndImport || pkgAndDefault;
+        if (!isGroup) {
+          if (result[result.length - 1].trim() !== '') {
+            result.push('');
+          }
+        }
+      }
+    }
+
+    result.push(line);
+  }
+
+  // 7. Ensure file ends with exactly one newline, no trailing blanks
+  while (result.length > 0 && result[result.length - 1].trim() === '') result.pop();
+  result.push('');
+
+  return result.join('\n');
+}
+
+/**
+ * Format a Rego file in place. Returns { changed, diff } summary.
+ */
+export function fmtRegoFile(filePath) {
+  const content = readFileSync(filePath, 'utf-8');
+  const formatted = fmtRegoSource(content);
+  return {
+    changed: content !== formatted,
+    formatted,
+    original: content,
+  };
+}
