@@ -2,7 +2,7 @@
 import { Command } from 'commander';
 import { glob } from 'glob';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { lintRegoFile, formatReport, filterBySeverity, fixRegoFile, loadConfig, fmtRegoFile, SEVERITY } from './index.js';
+import { lintRegoFile, formatReport, formatSummary, filterBySeverity, fixRegoFile, loadConfig, fmtRegoFile, SEVERITY } from './index.js';
 
 const program = new Command();
 
@@ -171,6 +171,46 @@ program
       console.log('\nAll files already formatted.');
     }
     process.exit(0);
+  });
+
+program
+  .command('summary')
+  .description('Summarized multi-file report (severity breakdown, per-file stats, top rules)')
+  .argument('<paths...>', 'Rego files or directories to check')
+  .option('--min-severity <level>', 'Minimum severity to report (high, medium, low)', 'low')
+  .option('--json', 'Output summary as JSON')
+  .action(async (paths, opts) => {
+    const config = loadConfig();
+    if (config.minSeverity && !opts.minSeverity) opts.minSeverity = config.minSeverity;
+
+    const files = [];
+    for (const p of paths) {
+      const matches = await glob(`${p}/**/*.rego`, { ignore: '**/node_modules/**' });
+      if (p.endsWith('.rego')) files.push(p);
+      files.push(...matches);
+    }
+    const unique = [...new Set(files)];
+    if (unique.length === 0) {
+      if (opts.json) console.log(JSON.stringify({ files: 0, findings: 0, passed: true }));
+      else console.log('No .rego files found.');
+      process.exit(0);
+    }
+
+    const allResults = [];
+    for (const f of unique) {
+      try { allResults.push(lintRegoFile(f)); } catch (e) { console.error(`❌ ${f}: ${e.message}`); }
+    }
+
+    if (opts.json) {
+      const { generateSummary } = await import('./index.js');
+      const summary = generateSummary(allResults, opts.minSeverity);
+      console.log(JSON.stringify(summary, null, 2));
+    } else {
+      const report = formatSummary(allResults, opts.minSeverity);
+      console.log(report.output);
+    }
+    const summary = formatSummary(allResults, opts.minSeverity);
+    process.exit(summary.passed ? 0 : 1);
   });
 
 program.parse();

@@ -210,6 +210,98 @@ export function filterBySeverity(findings, minSeverity) {
   return findings.filter(f => (SEVERITY_ORDER[f.severity] ?? 1) <= threshold);
 }
 
+/**
+ * Generate a summary report across multiple files.
+ * Returns structured data suitable for CI dashboards and human reading.
+ */
+export function generateSummary(allResults, minSeverity) {
+  const severityIcon = { high: '🔴', medium: '🟡', low: '🟢' };
+  const severityCounts = { high: 0, medium: 0, low: 0 };
+  const fileStats = [];
+  let totalFindings = 0;
+  let totalErrors = 0;
+  let totalWarnings = 0;
+  let totalInfo = 0;
+  let cleanFiles = 0;
+  let dirtyFiles = 0;
+  const ruleBreakdown = {};
+
+  for (const result of allResults) {
+    const filtered = minSeverity ? filterBySeverity(result.findings, minSeverity) : result.findings;
+    const fileErrorCount = filtered.filter(f => f.level === RULE_LEVELS.ERROR).length;
+    const fileWarnCount = filtered.filter(f => f.level === RULE_LEVELS.WARN).length;
+    const fileInfoCount = filtered.filter(f => f.level === RULE_LEVELS.INFO).length;
+    totalErrors += fileErrorCount;
+    totalWarnings += fileWarnCount;
+    totalInfo += fileInfoCount;
+    totalFindings += filtered.length;
+
+    if (filtered.length === 0) { cleanFiles++; } else { dirtyFiles++; }
+
+    for (const f of filtered) {
+      severityCounts[f.severity] = (severityCounts[f.severity] || 0) + 1;
+      ruleBreakdown[f.rule] = (ruleBreakdown[f.rule] || 0) + 1;
+    }
+
+    fileStats.push({
+      file: result.filename,
+      lines: result.totalLines,
+      findings: filtered.length,
+      errors: fileErrorCount,
+      warnings: fileWarnCount,
+      info: fileInfoCount,
+      topRules: filtered.map(f => f.rule),
+    });
+  }
+
+  return {
+    files: { total: allResults.length, clean: cleanFiles, withIssues: dirtyFiles },
+    findings: { total: totalFindings, errors: totalErrors, warnings: totalWarnings, info: totalInfo },
+    severity: severityCounts,
+    rules: Object.entries(ruleBreakdown).sort((a, b) => b[1] - a[1]),
+    fileStats,
+    passed: totalErrors === 0,
+  };
+}
+
+export function formatSummary(allResults, minSeverity) {
+  const s = generateSummary(allResults, minSeverity);
+  const severityIcon = { high: '🔴', medium: '🟡', low: '🟢' };
+  let out = '';
+
+  out += '═══ k8s-policy-check summary ═══\n\n';
+  out += `Files scanned : ${s.files.total} (${s.files.clean} clean, ${s.files.withIssues} with issues)\n`;
+  out += `Total findings: ${s.findings.total} — ${s.findings.errors} errors, ${s.findings.warnings} warnings, ${s.findings.info} info\n\n`;
+
+  // Severity breakdown
+  if (s.findings.total > 0) {
+    out += 'Severity breakdown:\n';
+    for (const [sev, count] of Object.entries(s.severity)) {
+      if (count > 0) out += `  ${severityIcon[sev] || '⚪'} ${sev}: ${count}\n`;
+    }
+    out += '\n';
+
+    // Top rules
+    out += 'Top rules:\n';
+    for (const [rule, count] of s.rules.slice(0, 5)) {
+      out += `  ${rule}: ${count}\n`;
+    }
+    out += '\n';
+
+    // Per-file summary
+    out += 'Per-file:\n';
+    for (const f of s.fileStats) {
+      const icon = f.errors > 0 ? '❌' : f.findings > 0 ? '⚠️' : '✅';
+      const detail = f.findings > 0 ? ` (${f.errors}E/${f.warnings}W/${f.info}I)` : '';
+      out += `  ${icon} ${f.file}: ${f.findings} finding${f.findings !== 1 ? 's' : ''}${detail}\n`;
+    }
+    out += '\n';
+  }
+
+  out += s.passed ? '✅ PASSED — no errors\n' : '❌ FAILED — errors found\n';
+  return { output: out, ...s };
+}
+
 export function formatReport(results, minSeverity) {
   const { ERROR, WARN, INFO } = RULE_LEVELS;
   let errors = 0, warnings = 0, infos = 0;
