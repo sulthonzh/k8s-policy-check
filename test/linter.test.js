@@ -1,36 +1,39 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { writeFileSync, unlinkSync } from 'node:fs';
 import { lintRegoFile, lintConstraintTemplate, formatReport } from '../src/index.js';
 
 describe('lintRegoFile', () => {
   it('catches dangerous default allow', () => {
     const result = lintRegoFile('test/fixtures/bad.rego');
-    const rule = result.findings.find(f => f.rule === 'dangerous-default-allow');
-    assert.ok(rule, 'should find dangerous default allow');
+    assert.ok(result.findings.find(f => f.rule === 'dangerous-default-allow'));
   });
 
   it('catches hardcoded secrets', () => {
     const result = lintRegoFile('test/fixtures/bad.rego');
-    const rule = result.findings.find(f => f.rule === 'hardcoded-secret');
-    assert.ok(rule, 'should find hardcoded secret');
+    assert.ok(result.findings.find(f => f.rule === 'hardcoded-secret'));
   });
 
   it('catches print() usage', () => {
     const result = lintRegoFile('test/fixtures/bad.rego');
-    const rule = result.findings.find(f => f.rule === 'no-print');
-    assert.ok(rule, 'should find print() call');
+    assert.ok(result.findings.find(f => f.rule === 'no-print'));
   });
 
   it('passes a clean policy', () => {
     const result = lintRegoFile('test/fixtures/good.rego');
-    const errors = result.findings.filter(f => f.level === 'error');
-    assert.equal(errors.length, 0, 'good policy should have no errors');
+    assert.equal(result.findings.filter(f => f.level === 'error').length, 0);
   });
 
   it('warns on missing violation/warn rules', () => {
     const result = lintRegoFile('test/fixtures/warn.rego');
-    const rule = result.findings.find(f => f.rule === 'missing-violation');
-    assert.ok(rule, 'should warn about missing violation rule');
+    assert.ok(result.findings.find(f => f.rule === 'missing-violation'));
+  });
+
+  it('flags no-package', () => {
+    writeFileSync('/tmp/no-pkg-test.rego', 'allow { true }\n');
+    const result = lintRegoFile('/tmp/no-pkg-test.rego');
+    unlinkSync('/tmp/no-pkg-test.rego');
+    assert.ok(result.findings.find(f => f.rule === 'no-package'));
   });
 });
 
@@ -56,7 +59,6 @@ describe('lintConstraintTemplate', () => {
   it('warns on missing targets', () => {
     const yaml = 'kind: ConstraintTemplate\nmetadata:\n  name: test\nspec:\n  crd:\n    spec:\n      names:\n        kind: Test\n';
     const findings = lintConstraintTemplate(yaml);
-    const target = findings.find(f => f.rule === 'missing-targets');
-    assert.ok(target, 'should warn about missing targets');
+    assert.ok(findings.find(f => f.rule === 'missing-targets'));
   });
 });
