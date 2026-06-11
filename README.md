@@ -27,39 +27,75 @@ k8s-policy-check ./policies/
 k8s-policy-check ./policies/ && echo "Policies OK"
 ```
 
+## CLI Options
+
+```bash
+k8s-policy-check [options] <paths...>
+
+Options:
+  --json              Output as JSON (for CI/automation)
+  --min-severity      Minimum severity to report: high, medium, low (default: low)
+  --max-errors <n>    Max allowed errors before failing (default: 0)
+  --no-color          Disable colored output
+```
+
+### Severity filtering
+
+Every finding has a severity: **high**, **medium**, or **low**. Use `--min-severity` to control what gets reported:
+
+```bash
+# Only show high-severity issues (for strict CI gates)
+k8s-policy-check --min-severity high ./policies/
+
+# Show high + medium (default for most teams)
+k8s-policy-check --min-severity medium ./policies/
+```
+
+You can also override severity per-line with inline comments:
+
+```rego
+print("debugging")  # k8s-policy-check-severity: low
+```
+
 ## What it checks
 
-| Rule | Level | What it catches |
-|------|-------|----------------|
-| `no-package` | Error | Missing package declaration |
-| `dangerous-default-allow` | Error | `default allow := true` |
-| `no-print` | Error | `print()` in production policies |
-| `hardcoded-secret` | Error | Hardcoded passwords/tokens/keys |
-| `deprecated-import` | Warn | `import future.keywords` (deprecated) |
-| `missing-violation` | Warn | No `violation` or `warn` rules (Gatekeeper) |
-| `package-naming` | Warn | Non-standard package naming |
-| `missing-rule-doc` | Info | Rules without preceding comments |
+| Rule | Level | Severity | What it catches |
+|------|-------|----------|----------------|
+| `no-package` | Error | High | Missing package declaration |
+| `dangerous-default-allow` | Error | High | `default allow := true` |
+| `hardcoded-secret` | Error | High | Hardcoded passwords/tokens/keys |
+| `no-print` | Error | Medium | `print()` in production policies |
+| `missing-violation` | Warn | Medium | No `violation` or `warn` rules (Gatekeeper) |
+| `deprecated-import` | Warn | Low | `import future.keywords` (deprecated) |
+| `package-naming` | Warn | Low | Non-standard package naming |
+| `missing-rule-doc` | Info | Low | Rules without preceding comments |
 
 ## Example output
 
 ```
 📋 bad.rego (8 lines)
-  ❌ L4 [dangerous-default-allow] Default allow = true is dangerous
-  ❌ L6 [hardcoded-secret] Possible hardcoded secret in policy
-  ❌ L9 [no-print] print() should not be used in production policies
+  ❌ 🔴 L4 [dangerous-default-allow] Default allow = true is dangerous
+  ❌ 🔴 L6 [hardcoded-secret] Possible hardcoded secret in policy
+  ❌ 🟡 L9 [no-print] print() should not be used in production policies
 ✅ good.rego — clean
 
 3 findings: 3 errors, 0 warnings, 0 info
 ❌ Policy check FAILED
 ```
 
+Severity icons: 🔴 high · 🟡 medium · 🟢 low
+
 ## Programmatic API
 
 ```js
-import { lintRegoFile, formatReport } from '@sulthonzh/k8s-policy-check';
+import { lintRegoFile, formatReport, filterBySeverity } from '@sulthonzh/k8s-policy-check';
 
 const results = lintRegoFile('./policies/require-labels.rego');
-const report = formatReport([results]);
+
+// Filter to high-severity only
+const highOnly = filterBySeverity(results.findings, 'high');
+
+const report = formatReport([results], 'medium'); // minSeverity filter
 console.log(report.output);
 ```
 
