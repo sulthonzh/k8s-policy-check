@@ -37,7 +37,47 @@ Options:
   --min-severity      Minimum severity to report: high, medium, low (default: low)
   --max-errors <n>    Max allowed errors before failing (default: 0)
   --no-color          Disable colored output
+  --fix               Auto-fix issues where possible
+  --dry-run           Show what would be fixed without writing (use with --fix)
 ```
+
+### Auto-fix mode
+
+```bash
+# Fix issues automatically
+k8s-policy-check --fix ./policies/
+
+# Preview what would be fixed
+k8s-policy-check --fix --dry-run ./policies/
+```
+
+What `--fix` can do:
+- Remove `print()` calls
+- Remove deprecated `import future.keywords`
+- Change `default allow := true` to `false`
+- Add missing `package` declarations
+
+### Config file
+
+Create `.k8s-policy-checkrc` in your project root (key=value or JSON):
+
+```
+# .k8s-policy-checkrc
+minSeverity=medium
+maxErrors=5
+fix=true
+```
+
+Or JSON:
+
+```json
+{
+  "minSeverity": "high",
+  "maxErrors": 0
+}
+```
+
+CLI flags override config file values.
 
 ### Severity filtering
 

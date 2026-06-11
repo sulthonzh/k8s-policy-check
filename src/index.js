@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { basename } from 'node:path';
 
 /**
@@ -167,4 +167,119 @@ export function formatReport(results, minSeverity) {
   output += `\n${total} findings: ${errors} errors, ${warnings} warnings, ${infos} info\n`;
   output += errors > 0 ? '❌ Policy check FAILED\n' : '✅ Policy check PASSED\n';
   return { output, errors, warnings, infos, passed: errors === 0 };
+}
+
+// ── Config file support ──────────────────────────────────────────────
+
+/**
+ * Load config from .k8s-policy-checkrc (JSON or key=value lines).
+ * Looks in cwd and parent directories up to git root.
+ */
+export function loadConfig(cwd = process.cwd()) {
+  const configNames = ['.k8s-policy-checkrc', '.k8s-policy-check.json'];
+  let dir = cwd;
+  for (let i = 0; i < 10; i++) {
+    for (const name of configNames) {
+      const path = `${dir}/${name}`;
+      if (existsSync(path)) {
+        try {
+          const raw = readFileSync(path, 'utf-8').trim();
+          if (raw.startsWith('{')) return JSON.parse(raw);
+          // key=value format
+          const cfg = {};
+          for (const line of raw.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const eqIdx = trimmed.indexOf('=');
+            if (eqIdx > 0) {
+              const key = trimmed.slice(0, eqIdx).trim();
+              let val = trimmed.slice(eqIdx + 1).trim();
+              // coerce booleans and numbers
+              if (val === 'true') val = true;
+              else if (val === 'false') val = false;
+              else if (/^\d+$/.test(val)) val = Number(val);
+              cfg[key] = val;
+            }
+          }
+          return cfg;
+        } catch {
+          return {};
+        }
+      }
+    }
+    const parent = dir.replace(/\/[^/]+$/, '');
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return {};
+}
+
+// ── Fix mode ─────────────────────────────────────────────────────────
+
+/**
+ * Auto-fix certain lint issues in a Rego file.
+ * Returns { fixes: [...], fixed: <new content or null> }
+ */
+export function fixRegoFile(filePath) {
+  const content = readFileSync(filePath, 'utf-8');
+  const lines = content.split('\n');
+  const fixes = [];
+  let modified = false;
+
+  const newLines = [];
+  let packageName = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let newLine = line;
+
+    // Fix: remove print() calls
+    if (/\bprint\s*\(/.test(line) && !line.trim().startsWith('#')) {
+      // If the whole line is just a print call, skip it
+      if (/^\s*print\s*\(.+\)\s*$/.test(line)) {
+        fixes.push({ rule: 'no-print', line: i + 1, action: 'removed print() call' });
+        modified = true;
+        continue;
+      }
+      // If print is part of a larger expression, comment it out
+      newLine = line.replace(/\bprint\s*\([^)]*\)/, 'true /* print removed */');
+      fixes.push({ rule: 'no-print', line: i + 1, action: 'commented out print()' });
+      modified = true;
+    }
+
+    // Fix: remove deprecated future.keywords imports
+    if (line.includes('import future.keywords') && !line.trim().startsWith('#')) {
+      fixes.push({ rule: 'deprecated-import', line: i + 1, action: 'removed deprecated future.keywords import' });
+      modified = true;
+      continue;
+    }
+
+    // Fix: default allow := true → default allow := false
+    if (/^default\s+allow\s*:=?\s*true/.test(line.trim())) {
+      newLine = line.replace(/(default\s+allow\s*:=?\s*)true/, '$1false');
+      fixes.push({ rule: 'dangerous-default-allow', line: i + 1, action: 'changed default allow from true to false' });
+      modified = true;
+    }
+
+    newLines.push(newLine);
+
+    // Track package name for potential auto-add
+    const pkgMatch = line.match(/^package\s+(\S+)/);
+    if (pkgMatch) packageName = pkgMatch[1];
+  }
+
+  // Fix: add missing package declaration
+  if (!packageName && !content.includes('package ')) {
+    // Use filename as hint for package name
+    const hint = basename(filePath).replace('.rego', '').replace(/_/g, '.');
+    newLines.unshift(`package ${hint}`);
+    newLines.unshift('# Auto-added by k8s-policy-check --fix');
+    fixes.push({ rule: 'no-package', line: 1, action: `added package declaration: package ${hint}` });
+    modified = true;
+  }
+
+  return {
+    fixes,
+    fixed: modified ? newLines.join('\n') : null,
+  };
 }
