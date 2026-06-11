@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name('k8s-policy-check')
   .description('Lint and validate OPA/Gatekeeper Rego policies for Kubernetes')
-  .version('1.3.0')
+  .version('1.4.0')
   .argument('<paths...>', 'Rego files or directories to check')
   .option('--no-color', 'Disable colored output')
   .option('--json', 'Output results as JSON (for CI/automation)')

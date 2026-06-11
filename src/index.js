@@ -41,10 +41,78 @@ function resolveSeverity(rule, lineContent) {
   return RULE_SEVERITY[rule] || SEVERITY.MEDIUM;
 }
 
+
+
+// ── Inline suppression support ──────────────────────────────────────
+
+/**
+ * Parse inline suppression comments from Rego source.
+ *
+ * Supported patterns:
+ *   # k8s-policy-check-disable              — suppress all rules for the next line
+ *   # k8s-policy-check-disable <rule>       — suppress a specific rule for the next line
+ *   # k8s-policy-check-disable-line         — suppress all rules on the same line (trailing comment)
+ *   # k8s-policy-check-disable-line <rule>  — suppress a specific rule on the same line
+ *   # k8s-policy-check-disable-file         — suppress all rules for the entire file
+ *   # k8s-policy-check-disable-file <rule>  — suppress a specific rule for the entire file
+ *
+ * Returns { fileRules: Set<string|null>, lineRules: Map<number, Set<string|null>> }
+ *   null in Set means "all rules suppressed"
+ */
+export function parseSuppressions(lines) {
+  const fileRules = new Set();   // null = all rules, string = specific rule
+  const lineRules = new Map();   // lineNum → Set<rule|null>
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // File-level suppression
+    const fileMatch = line.match(/k8s-policy-check-disable-file(?:\s+(\S+))?/);
+    if (fileMatch) {
+      fileRules.add(fileMatch[1] || null);
+      continue;
+    }
+
+    // Next-line suppression
+    const nextMatch = line.match(/k8s-policy-check-disable(?:\s+(\S+))?$/);
+    if (nextMatch && !line.match(/k8s-policy-check-disable-line/)) {
+      const target = i + 2; // next line (1-indexed)
+      if (!lineRules.has(target)) lineRules.set(target, new Set());
+      lineRules.get(target).add(nextMatch[1] || null);
+      continue;
+    }
+
+    // Same-line suppression (trailing comment on the actual code line)
+    const sameMatch = line.match(/k8s-policy-check-disable-line(?:\s+(\S+))?/);
+    if (sameMatch) {
+      const target = i + 1; // current line (1-indexed)
+      if (!lineRules.has(target)) lineRules.set(target, new Set());
+      lineRules.get(target).add(sameMatch[1] || null);
+    }
+  }
+
+  return { fileRules, lineRules };
+}
+
+function isSuppressed(rule, lineNum, suppressions) {
+  // Check file-level suppression
+  if (suppressions.fileRules.has(null)) return true;
+  if (suppressions.fileRules.has(rule)) return true;
+
+  // Check line-level suppression
+  const lineSet = suppressions.lineRules.get(lineNum);
+  if (!lineSet) return false;
+  if (lineSet.has(null)) return true;
+  if (lineSet.has(rule)) return true;
+
+  return false;
+}
+
 export function lintRegoFile(filePath) {
   const content = readFileSync(filePath, 'utf-8');
   const findings = [];
   const lines = content.split('\n');
+  const suppressions = parseSuppressions(lines);
 
   // Rule: Package declaration required
   if (!content.includes('package ')) {
@@ -106,7 +174,10 @@ export function lintRegoFile(filePath) {
     findings.push({ rule: 'missing-violation', level: RULE_LEVELS.WARN, severity: SEVERITY.MEDIUM, message: 'Gatekeeper policies should define violation or warn rules', line: 1 });
   }
 
-  return { file: filePath, filename: basename(filePath), findings, totalLines: lines.length };
+  // Apply suppression filters
+  const filtered = findings.filter(f => !isSuppressed(f.rule, f.line, suppressions));
+
+  return { file: filePath, filename: basename(filePath), findings: filtered, totalLines: lines.length, suppressed: findings.length - filtered.length };
 }
 
 export function lintConstraintTemplate(yamlContent) {

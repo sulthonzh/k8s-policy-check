@@ -142,3 +142,43 @@ console.log(report.output);
 ## License
 
 MIT
+
+## Inline suppression
+
+Suppress specific findings with inline comments — similar to ESLint's `eslint-disable`:
+
+```rego
+# k8s-policy-check-disable dangerous-default-allow
+default allow := true
+```
+
+Or suppress all rules on the next line:
+
+```rego
+# k8s-policy-check-disable
+default allow := true
+```
+
+Suppress on the same line (trailing comment):
+
+```rego
+print("debugging")  # k8s-policy-check-disable-line no-print
+```
+
+Suppress for the entire file:
+
+```rego
+# k8s-policy-check-disable-file
+package test.foo
+
+default allow := true
+```
+
+Or suppress a specific rule for the entire file:
+
+```rego
+# k8s-policy-check-disable-file no-print
+package test.foo
+```
+
+Suppressed findings are counted but not reported in output.
