@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { glob } from 'glob';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { lintRegoFile, formatReport, formatSummary, filterBySeverity, fixRegoFile, loadConfig, fmtRegoFile, SEVERITY } from './index.js';
+import { generateSarif } from './sarif.js';
 
 const program = new Command();
 
@@ -21,6 +22,7 @@ const lintCommand = program
   .option('--min-severity <level>', 'Minimum severity to report (high, medium, low)', 'low')
   .option('--fix', 'Auto-fix issues where possible (prints, imports, default allow)')
   .option('--dry-run', 'Show what would be fixed without writing files (use with --fix)')
+  .option('--sarif', 'Output results as SARIF v2.1.0 (for GitHub Code Scanning)')
   .action(async (paths, opts) => {
     // Merge config file with CLI opts (CLI takes precedence)
     const config = loadConfig();
@@ -82,6 +84,13 @@ const lintCommand = program
       try { return lintRegoFile(f); }
       catch (e) { return { file: f, filename: f, findings: [{ rule: 'read-error', level: 'error', severity: 'high', message: e.message, line: 1 }], totalLines: 0 }; }
     });
+
+    if (opts.sarif) {
+      const sarif = generateSarif(results, { minSeverity: minSev });
+      console.log(JSON.stringify(sarif, null, 2));
+      const report = formatReport(results, minSev);
+      process.exit(report.errors > parseInt(opts.maxErrors, 10) ? 1 : 0);
+    }
 
     if (opts.json) {
       const report = formatReport(results, minSev);

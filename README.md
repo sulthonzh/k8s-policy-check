@@ -39,6 +39,7 @@ Options:
   --no-color          Disable colored output
   --fix               Auto-fix issues where possible
   --dry-run           Show what would be fixed without writing (use with --fix)
+  --sarif             Output as SARIF v2.1.0 (for GitHub Code Scanning)
 ```
 
 ### Auto-fix mode
@@ -182,3 +183,31 @@ package test.foo
 ```
 
 Suppressed findings are counted but not reported in output.
+
+### GitHub Code Scanning (SARIF)
+
+Upload lint results directly to GitHub Code Scanning:
+
+```bash
+k8s-policy-check --sarif ./policies/ > results.sarif
+```
+
+GitHub Actions workflow example:
+
+```yaml
+name: Policy Lint
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npx @sulthonzh/k8s-policy-check --sarif ./policies/ > results.sarif
+        continue-on-error: true
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+```
