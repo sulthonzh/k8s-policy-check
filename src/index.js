@@ -215,7 +215,6 @@ export function filterBySeverity(findings, minSeverity) {
  * Returns structured data suitable for CI dashboards and human reading.
  */
 export function generateSummary(allResults, minSeverity) {
-  const severityIcon = { high: '🔴', medium: '🟡', low: '🟢' };
   const severityCounts = { high: 0, medium: 0, low: 0 };
   const fileStats = [];
   let totalFindings = 0;

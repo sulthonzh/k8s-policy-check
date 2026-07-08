@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name('k8s-policy-check')
   .description('Lint and validate OPA/Gatekeeper Rego policies for Kubernetes')
-  .version('1.5.0');
+  .version('1.6.0');
 
 const lintCommand = program
   .command('lint', { isDefault: true })
@@ -26,8 +26,9 @@ const lintCommand = program
   .action(async (paths, opts) => {
     // Merge config file with CLI opts (CLI takes precedence)
     const config = loadConfig();
-    if (config.minSeverity && !opts.minSeverity) opts.minSeverity = config.minSeverity;
-    if (config.maxErrors && !opts.maxErrors) opts.maxErrors = String(config.maxErrors);
+    // CLI opts always have defaults, so check against them to detect user-provided values
+    if (config.minSeverity && opts.minSeverity === 'low') opts.minSeverity = config.minSeverity;
+    if (config.maxErrors !== undefined && opts.maxErrors === '0') opts.maxErrors = String(config.maxErrors);
     if (config.noColor) opts.noColor = true;
     if (config.fix && !opts.fix) opts.fix = config.fix;
 
@@ -210,15 +211,12 @@ program
       try { allResults.push(lintRegoFile(f)); } catch (e) { console.error(`❌ ${f}: ${e.message}`); }
     }
 
+    const summary = formatSummary(allResults, opts.minSeverity);
     if (opts.json) {
-      const { generateSummary } = await import('./index.js');
-      const summary = generateSummary(allResults, opts.minSeverity);
       console.log(JSON.stringify(summary, null, 2));
     } else {
-      const report = formatSummary(allResults, opts.minSeverity);
-      console.log(report.output);
+      console.log(summary.output);
     }
-    const summary = formatSummary(allResults, opts.minSeverity);
     process.exit(summary.passed ? 0 : 1);
   });
 
