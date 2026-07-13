@@ -59,6 +59,12 @@ describe('fmtRegoSource', () => {
   it('formats a complex Rego file correctly', () => {
     const input = `package k8s.policies.trustedrepos
 import data.k8s
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const FIXTURES = join(__dirname, 'fixtures');
 # Check if image is from trusted registry
 violation[msg]\t{
 \tcontainer := input.review.object.spec.containers[_]

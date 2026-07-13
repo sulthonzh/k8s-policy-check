@@ -1,10 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { lintRegoFile, generateSummary, formatSummary, filterBySeverity } from '../src/index.js';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const FIXTURES = join(__dirname, 'fixtures');
 
 describe('generateSummary', () => {
   it('returns clean summary for passing files', () => {
-    const results = [lintRegoFile('test/fixtures/good.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'good.rego'))];
     const s = generateSummary(results);
     assert.equal(s.files.total, 1);
     assert.equal(s.files.clean, 1);
@@ -14,7 +20,7 @@ describe('generateSummary', () => {
   });
 
   it('counts errors and warnings from bad files', () => {
-    const results = [lintRegoFile('test/fixtures/bad.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const s = generateSummary(results);
     assert.equal(s.files.withIssues, 1);
     assert.ok(s.findings.errors > 0);
@@ -22,13 +28,13 @@ describe('generateSummary', () => {
   });
 
   it('breaks down by severity', () => {
-    const results = [lintRegoFile('test/fixtures/bad.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const s = generateSummary(results);
     assert.ok(s.severity.high > 0);
   });
 
   it('lists top rules', () => {
-    const results = [lintRegoFile('test/fixtures/bad.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const s = generateSummary(results);
     assert.ok(s.rules.length > 0);
     assert.ok(typeof s.rules[0][0] === 'string');
@@ -37,8 +43,8 @@ describe('generateSummary', () => {
 
   it('aggregates across multiple files', () => {
     const results = [
-      lintRegoFile('test/fixtures/good.rego'),
-      lintRegoFile('test/fixtures/bad.rego'),
+      lintRegoFile(join(FIXTURES, 'good.rego')),
+      lintRegoFile(join(FIXTURES, 'bad.rego')),
     ];
     const s = generateSummary(results);
     assert.equal(s.files.total, 2);
@@ -47,14 +53,14 @@ describe('generateSummary', () => {
   });
 
   it('respects min-severity filter', () => {
-    const results = [lintRegoFile('test/fixtures/bad.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const s = generateSummary(results, 'high');
     const sAll = generateSummary(results);
     assert.ok(s.findings.total <= sAll.findings.total);
   });
 
   it('includes per-file stats', () => {
-    const results = [lintRegoFile('test/fixtures/bad.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const s = generateSummary(results);
     assert.equal(s.fileStats.length, 1);
     assert.ok(s.fileStats[0].file.includes('.rego'));
@@ -64,7 +70,7 @@ describe('generateSummary', () => {
 
 describe('formatSummary', () => {
   it('outputs formatted text', () => {
-    const results = [lintRegoFile('test/fixtures/bad.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const report = formatSummary(results);
     assert.ok(report.output.includes('k8s-policy-check summary'));
     assert.ok(report.output.includes('Files scanned'));
@@ -73,21 +79,21 @@ describe('formatSummary', () => {
   });
 
   it('shows PASSED for clean files', () => {
-    const results = [lintRegoFile('test/fixtures/good.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'good.rego'))];
     const report = formatSummary(results);
     assert.ok(report.output.includes('PASSED'));
     assert.equal(report.passed, true);
   });
 
   it('includes severity breakdown when findings exist', () => {
-    const results = [lintRegoFile('test/fixtures/bad.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const report = formatSummary(results);
     assert.ok(report.output.includes('Severity breakdown'));
     assert.ok(report.output.includes('Per-file'));
   });
 
   it('skips detail sections when no findings', () => {
-    const results = [lintRegoFile('test/fixtures/good.rego')];
+    const results = [lintRegoFile(join(FIXTURES, 'good.rego'))];
     const report = formatSummary(results);
     assert.ok(!report.output.includes('Severity breakdown'));
     assert.ok(!report.output.includes('Per-file'));

@@ -1,31 +1,37 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, unlinkSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { lintRegoFile, lintConstraintTemplate, formatReport, filterBySeverity, SEVERITY, RULE_SEVERITY } from '../src/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const FIXTURES = join(__dirname, 'fixtures');
 
 describe('lintRegoFile', () => {
   it('catches dangerous default allow', () => {
-    const result = lintRegoFile('test/fixtures/bad.rego');
+    const result = lintRegoFile(join(FIXTURES, 'bad.rego'));
     assert.ok(result.findings.find(f => f.rule === 'dangerous-default-allow'));
   });
 
   it('catches hardcoded secrets', () => {
-    const result = lintRegoFile('test/fixtures/bad.rego');
+    const result = lintRegoFile(join(FIXTURES, 'bad.rego'));
     assert.ok(result.findings.find(f => f.rule === 'hardcoded-secret'));
   });
 
   it('catches print() usage', () => {
-    const result = lintRegoFile('test/fixtures/bad.rego');
+    const result = lintRegoFile(join(FIXTURES, 'bad.rego'));
     assert.ok(result.findings.find(f => f.rule === 'no-print'));
   });
 
   it('passes a clean policy', () => {
-    const result = lintRegoFile('test/fixtures/good.rego');
+    const result = lintRegoFile(join(FIXTURES, 'good.rego'));
     assert.equal(result.findings.filter(f => f.level === 'error').length, 0);
   });
 
   it('warns on missing violation/warn rules', () => {
-    const result = lintRegoFile('test/fixtures/warn.rego');
+    const result = lintRegoFile(join(FIXTURES, 'warn.rego'));
     assert.ok(result.findings.find(f => f.rule === 'missing-violation'));
   });
 
@@ -39,26 +45,26 @@ describe('lintRegoFile', () => {
 
 describe('severity', () => {
   it('every finding has a severity field', () => {
-    const result = lintRegoFile('test/fixtures/bad.rego');
+    const result = lintRegoFile(join(FIXTURES, 'bad.rego'));
     for (const f of result.findings) {
       assert.ok(['high', 'medium', 'low'].includes(f.severity), `finding ${f.rule} missing severity`);
     }
   });
 
   it('dangerous-default-allow is high severity', () => {
-    const result = lintRegoFile('test/fixtures/bad.rego');
+    const result = lintRegoFile(join(FIXTURES, 'bad.rego'));
     const f = result.findings.find(f => f.rule === 'dangerous-default-allow');
     assert.equal(f.severity, 'high');
   });
 
   it('hardcoded-secret is high severity', () => {
-    const result = lintRegoFile('test/fixtures/bad.rego');
+    const result = lintRegoFile(join(FIXTURES, 'bad.rego'));
     const f = result.findings.find(f => f.rule === 'hardcoded-secret');
     assert.equal(f.severity, 'high');
   });
 
   it('no-print is medium severity', () => {
-    const result = lintRegoFile('test/fixtures/bad.rego');
+    const result = lintRegoFile(join(FIXTURES, 'bad.rego'));
     const f = result.findings.find(f => f.rule === 'no-print');
     assert.equal(f.severity, 'medium');
   });

@@ -2,13 +2,19 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateSarif } from '../src/sarif.js';
 import { lintRegoFile } from '../src/index.js';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const FIXTURES = join(__dirname, 'fixtures');
 
 function results(sarif) { return sarif.runs[0].results; }
 function rules(sarif) { return sarif.runs[0].tool.driver.rules; }
 
 describe('generateSarif', () => {
   it('produces valid SARIF structure', () => {
-    const linted = [lintRegoFile('test/fixtures/bad.rego')];
+    const linted = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const sarif = generateSarif(linted);
 
     assert.equal(sarif.version, '2.1.0');
@@ -24,7 +30,7 @@ describe('generateSarif', () => {
   });
 
   it('maps severity to correct SARIF levels', () => {
-    const linted = [lintRegoFile('test/fixtures/bad.rego')];
+    const linted = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const sarif = generateSarif(linted);
 
     const levels = new Set(results(sarif).map(r => r.level));
@@ -32,7 +38,7 @@ describe('generateSarif', () => {
   });
 
   it('includes rule metadata in driver.rules', () => {
-    const linted = [lintRegoFile('test/fixtures/bad.rego')];
+    const linted = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const sarif = generateSarif(linted);
 
     for (const rule of rules(sarif)) {
@@ -43,7 +49,7 @@ describe('generateSarif', () => {
   });
 
   it('includes location with file path and line number', () => {
-    const linted = [lintRegoFile('test/fixtures/bad.rego')];
+    const linted = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const sarif = generateSarif(linted);
 
     for (const result of results(sarif)) {
@@ -56,7 +62,7 @@ describe('generateSarif', () => {
   });
 
   it('filters by minSeverity', () => {
-    const linted = [lintRegoFile('test/fixtures/bad.rego')];
+    const linted = [lintRegoFile(join(FIXTURES, 'bad.rego'))];
     const all = generateSarif(linted);
     const highOnly = generateSarif(linted, { minSeverity: 'high' });
 
@@ -68,7 +74,7 @@ describe('generateSarif', () => {
 
   it('handles clean files with no findings', () => {
     const linted = [{
-      file: 'test/fixtures/clean.rego',
+      file: join(FIXTURES, 'clean.rego'),
       filename: 'clean.rego',
       findings: [],
       totalLines: 10,
@@ -81,9 +87,9 @@ describe('generateSarif', () => {
 
   it('handles multiple files', () => {
     const linted = [
-      lintRegoFile('test/fixtures/bad.rego'),
+      lintRegoFile(join(FIXTURES, 'bad.rego')),
       {
-        file: 'test/fixtures/other.rego',
+        file: join(FIXTURES, 'other.rego'),
         filename: 'other.rego',
         findings: [{ rule: 'no-package', level: 'error', severity: 'high', message: 'Missing package', line: 1 }],
         totalLines: 5,
