@@ -22,7 +22,7 @@
   "author": "sulthonzh",
   "license": "MIT",
   "dependencies": {
-    "chalk": "^5.3.0",
+    "chalk": "^6.0.0",
     "commander": "^15.0.0",
     "glob": "^10.3.0"
   },
