@@ -1,6 +1,7 @@
 # STATUS.md — k8s-policy-check
 
-**Audit date:** 2026-07-08 00:47 UTC  
+**Audit date:** 2026-07-08 00:47 UTC
+**Re-verified:** 2026-08-14 05:23 UTC — 74/74 GREEN ✅ (node --test, 14 suites). Remote HEAD ✅.  
 **Version:** 1.6.0  
 **Status:** ✅ EXCEPTIONAL
 
